@@ -9,19 +9,29 @@ Might be able to perform best with samples of each species.
 
 ## Experiments:
 
-* Initial test with random herbaria sample (true class given as plant): Produced correct output since the class labels were simple and varied.
+### Initial Tests
 
-* Test with Taxon gave correct prediction (gave 4 other taxons in the class): Produced correct output for a few samples with highest probability of correct class but is inconsistent.
+TODO: add next level of details with image thumbnails and output class probabilities.
+
+* Initial test with random herbaria sample (against 5 classes -- flower, rock, herb, man, tree with true class given as plant): Produced correct output since the class labels were simple and varied. Ranked order of classification results were plant, herb, tree, flower and man.
+
+* Test with 3 images with different taxons against a total of 6 possible Taxons. Taxon gave correct prediction (gave 4 other taxons in the class): Produced correct output for a few samples with highest probability of correct class but is inconsistent.
 
 * Objective : Evaluate anecdotally by providing herbaria samples and asking if it can identify plant species. Also try asking about existence of fruits, flowers or buds. Could also ask specifically about phenology of the plant. Start with entire image. Perhaps experiment with crop of the plant only, or with labels blurred.
+
+### Experiment 1
 
 * Experiment : with 10 image dataset and 1008 classes from taxon GT
 Evaluation : Against top 5 predictions by CLIP
 Result : Accuracy = 0%
 
+### Experiment 2
+
 * Experiment : with 10 image dataset and same 10 classes from taxon GT
 Evaluation : Against top 5 predictions by CLIP
 Result : Accuracy = 30%
+
+### Experiment 3
 
 * Experiment : with 10 image dataset and 1008 classes from taxon GT
 Evaluation : Against top 10 predictions by CLIP
