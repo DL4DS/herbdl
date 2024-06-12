@@ -8,13 +8,12 @@ import logging
 import time
 import random
 from argparse import ArgumentParser
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 CWD = os.getcwd()
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(filename=f'{CWD}/image_install.log', level=logging.INFO, filemode='w')
-
-# not_installed = open("not_installed.txt", "w")
 
 INSTALL_PATH = "/projectnb/herbdl/data/harvard-herbaria/images"
 GBIF_MULTIMEDIA_DATA = "/projectnb/herbdl/data/harvard-herbaria/gbif/multimedia.txt"
@@ -32,7 +31,7 @@ retry_strategy = Retry(
     status_forcelist=[429, 500, 502, 503, 504],
     allowed_methods=["HEAD", "GET", "OPTIONS"]
 )
-adapter = HTTPAdapter()  #max_retries=retry_strategy)
+adapter = HTTPAdapter(max_retries=retry_strategy)
 session.mount("http://", adapter)
 session.mount("https://", adapter)
 
@@ -40,65 +39,58 @@ min_delay = 10
 max_delay = 30
 
 def download_image(gbif_id, image_url, local_path):
-    image_response = session.get(image_url, stream=True)
+    try:
+        image_response = session.get(image_url, stream=True, headers={
+            "User-Agent": random.choice(user_agents),
+            "Connection": "keep-alive",
+            "Referer": "https://scc-ondemand1.bu.edu/"
+        })
 
-    with open(local_path, 'wb') as out_file:
-        shutil.copyfileobj(image_response.raw, out_file)
-        
-    del image_response
+        if image_response.status_code == 200:
+            with open(local_path, 'wb') as out_file:
+                shutil.copyfileobj(image_response.raw, out_file)
+            logger.info(f"Downloaded {gbif_id} to {local_path}")
+        else:
+            raise Exception(f"HTTP {image_response.status_code}")
 
+    except Exception as e:
+        logger.error(f"Error downloading {gbif_id}: {e}")
+
+    finally:
+        del image_response
+
+def process_row(row):
+    gbif_id = row['gbifID']
+    image_url = row['identifier']
+    local_path = os.path.join(INSTALL_PATH, f"{gbif_id}.jpg")
+
+    if os.path.exists(local_path):
+        logger.warning(f"Image {gbif_id} already exists")
+    else:
+        logger.info(f"Downloading {gbif_id} to {local_path}")
+        logger.info(f"Image URL: {image_url}")
+        download_image(gbif_id, image_url, local_path)
 
 if __name__ == "__main__":
-
     parser = ArgumentParser()
     parser.add_argument("-c", "--country", dest="country",
                         help="Country to download samples from", metavar="COUNTRY CODE")
 
     args = parser.parse_args()
-
     country = args.country
 
     df = pd.read_csv(GBIF_MULTIMEDIA_DATA, delimiter="\t", usecols=['gbifID', 'identifier'], on_bad_lines='skip')
 
     if country:
         df = df[df['countryCode'] == country]
-    
-    for index, row in df.iterrows():
-        
-        gbif_id = row['gbifID']
-        image_url = row['identifier']
 
-        # resp = req.get(f"https://api.gbif.org/v1/occurrence/{gbif_id}").json()
-        
-        image_host = req.utils.urlparse(image_url).hostname
-        
-        local_path = os.path.join(INSTALL_PATH, f"{gbif_id}.jpg")
+    with ThreadPoolExecutor(max_workers=10) as executor:  # Adjust max_workers as needed
+        futures = [executor.submit(process_row, row) for index, row in df.iterrows()]
 
-        logger.info(f"Downloading {gbif_id} to {local_path}")
-        logger.info(f"Image URL: {image_url}")
-
-        try: 
-
-            headers = {
-                "User-Agent": random.choice(user_agents),
-                "Connection": "keep-alive",
-                "Referer": "https://scc-ondemand1.bu.edu/"
-            }
-
-            if os.path.exists(local_path):
-                # logger.warn(f"Image {gbif_id} already exists")
-                continue
-            else:
-                download_image(gbif_id, image_url, local_path)
-
-                # time.sleep(random.uniform(min_delay, max_delay))
-                logger.info(f"Downloaded {gbif_id} to {local_path}")
-
-
-        except Exception as e:
-            logger.error(f"Error downloading {gbif_id}: {e}")
-            # not_installed.write(f"{gbif_id}\n")
-            
-        logger.info("-------------------------------------------------")
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as exc:
+                logger.error(f"Generated an exception: {exc}")
 
     not_installed.close()
