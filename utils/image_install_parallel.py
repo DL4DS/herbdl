@@ -9,7 +9,10 @@ import time
 import random
 from argparse import ArgumentParser
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from notifications import send_notification
 
+
+# get JOB_ID from environment
 CWD = os.getcwd()
 
 logger = logging.getLogger(__name__)
@@ -17,6 +20,8 @@ logging.basicConfig(filename=f'{CWD}/image_install.log', level=logging.INFO, fil
 
 INSTALL_PATH = "/projectnb/herbdl/data/harvard-herbaria/images"
 GBIF_MULTIMEDIA_DATA = "/projectnb/herbdl/data/harvard-herbaria/gbif/multimedia.txt"
+
+n_installed = len(os.listdir(INSTALL_PATH))
 
 user_agents = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -40,7 +45,7 @@ max_delay = 30
 
 def download_image(gbif_id, image_url, local_path):
     try:
-        image_response = session.get(image_url, stream=True, headers={
+        image_response = session.get(image_url, stream=True, timeout  = 30, headers={
             "User-Agent": random.choice(user_agents),
             "Connection": "keep-alive",
             "Referer": "https://scc-ondemand1.bu.edu/"
@@ -50,26 +55,32 @@ def download_image(gbif_id, image_url, local_path):
             with open(local_path, 'wb') as out_file:
                 shutil.copyfileobj(image_response.raw, out_file)
             logger.info(f"Downloaded {gbif_id} to {local_path}")
+            del image_response
         else:
             raise Exception(f"HTTP {image_response.status_code}")
 
     except Exception as e:
         logger.error(f"Error downloading {gbif_id}: {e}")
 
-    finally:
-        del image_response
-
 def process_row(row):
+    global n_installed
     gbif_id = row['gbifID']
     image_url = row['identifier']
     local_path = os.path.join(INSTALL_PATH, f"{gbif_id}.jpg")
 
     if os.path.exists(local_path):
-        logger.warning(f"Image {gbif_id} already exists")
+        # logger.warning(f"Image {gbif_id} already exists")
+        return
     else:
         logger.info(f"Downloading {gbif_id} to {local_path}")
         logger.info(f"Image URL: {image_url}")
         download_image(gbif_id, image_url, local_path)
+
+        n_installed += 1
+
+        if n_installed % 10000 == 0:
+            send_notification("Image Installation", f"Installed {n_installed} images")
+    
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -83,6 +94,8 @@ if __name__ == "__main__":
 
     if country:
         df = df[df['countryCode'] == country]
+
+    send_notification("Image Installation", f"Starting image installation for {len(df)} images")
 
     with ThreadPoolExecutor(max_workers=10) as executor:  # Adjust max_workers as needed
         futures = [executor.submit(process_row, row) for index, row in df.iterrows()]
