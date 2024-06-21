@@ -130,41 +130,36 @@ def process_chunk(caption_chunk, device, image):
     return max_prob, best_caption
 
 images_n = 0
+submission_lst = []
 
 if __name__ == '__main__':
 
     try: 
-        for image in preprocessed_images[:5]:
-            image_tensor = image['pixel_values']
+        
+        for image in preprocessed_images:
+            pixel_values = image['pixel_values'].cuda()
             image_path = image['image_path']
             image_id = int(image_path.split(".")[0][-1])
+
+            inputs = {"input_ids": tokenized_captions, "pixel_values": pixel_values, "attention_mask": attention_mask}
+
+            with torch.no_grad():
+                outputs = model(**inputs)
+
+            logits_per_image = outputs.logits_per_image  # this is the image-text similarity score
+            probs = logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
             
-            # Distribute the work across GPUs
-            with mp.get_context('spawn').Pool(num_gpus) as pool:
-                results = pool.starmap(process_chunk, [(chunk, f"cuda:{i}", image_tensor) for i, chunk in enumerate(caption_chunks)])
+            predicted_label = unique_captions[probs.argmax(dim=1)]
+            predicted_category = map_label_to_category(predicted_label)
 
-            # Aggregate the results
-            max_prob = -float('inf')
-            best_caption = None
-            for prob, caption in results:
-                if prob > max_prob:
-                    max_prob = prob
-                    best_caption = caption
+            submission_lst.append({"Id": image_id, "Predicted": predicted_category})
 
-            
-            predicted_category = map_label_to_category(best_caption)
-            logger.info(f"Image ID: {image_id}, caption: {best_caption}, predicted category: {predicted_category}")
-
-            submission_lst.append({
-                "image_id": image_id,
-                "category_id": predicted_category
-            })
-        
             images_n += 1
-
             if images_n % 500 == 0:
-                print(f"Processed {images_n} images")
                 logger.info(f"Processed {images_n} images")
+
+        submission_df = pd.DataFrame(submission_lst)
+        submission_df.head()
 
     except KeyboardInterrupt:
             logger.info(f"Processed {images_n} images")
