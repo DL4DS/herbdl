@@ -7,6 +7,8 @@ from transformers import (
 from transformers import CLIPProcessor, CLIPModel
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset
+from torchvision.transforms import Resize, Compose, PILToTensor
+from PIL import Image
 from datasets import load_dataset
 import torch.multiprocessing as mp
 import json
@@ -68,9 +70,23 @@ def map_label_to_category(label):
     return category
 
 
-# Load preprocessed images 
-with open("preprocessed_images.pkl", "rb") as f:
-    preprocessed_images = pickle.load(f)[:10]
+# Note: The else block takes a long time
+if os.path.exists("preprocessed_images.pkl"):
+    with open("preprocessed_images.pkl", "rb") as f:
+        preprocessed_images = pickle.load(f)
+else:
+    transform = Compose([
+        Resize((336, 336)),
+        PILToTensor(),
+    ])
+
+    def preprocess_image(image_path):
+        image = Image.open(image_path)
+        
+        return transform(image).unsqueeze(0)
+
+    preprocessed_images = [{'pixel_values': preprocess_image(image_path), 
+    "image_path": image_path} for image_path in IMAGE_PATHS]
 
 print("Number of Preprocessed Images:", len(preprocessed_images))
 
