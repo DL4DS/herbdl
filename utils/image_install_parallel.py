@@ -10,6 +10,7 @@ import random
 from argparse import ArgumentParser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from notifications import send_notification
+from image_utils import get_file_size_in_mb, resize_with_aspect_ratio
 
 
 # get JOB_ID from environment
@@ -45,7 +46,7 @@ max_delay = 30
 
 def download_image(gbif_id, image_url, local_path):
     try:
-        image_response = session.get(image_url, stream=True, timeout  = 30, headers={
+        image_response = session.get(image_url, stream=True, headers={
             "User-Agent": random.choice(user_agents),
             "Connection": "keep-alive",
             "Referer": "https://scc-ondemand1.bu.edu/"
@@ -62,6 +63,15 @@ def download_image(gbif_id, image_url, local_path):
     except Exception as e:
         logger.error(f"Error downloading {gbif_id}: {e}")
 
+
+def resize_image(gbif_id, local_path):
+    result = resize_with_aspect_ratio(local_path, local_path)
+    if result:
+        logger.info(f"Resized {gbif_id} to 1000x1000. Path: {local_path}")
+    else:
+        logger.info(f"Skipped resizing {gbif_id} as it is already 1000x1000")
+    
+
 def process_row(row):
     global n_installed
     gbif_id = row['gbifID']
@@ -70,17 +80,27 @@ def process_row(row):
 
     if os.path.exists(local_path):
         # logger.warning(f"Image {gbif_id} already exists")
-        return
+        size = get_file_size_in_mb(local_path)
+        if size < 0.01:
+            logger.warning(f"Image {gbif_id} is too small ({size} MB), redownloading")
+            _ = download_image(gbif_id, image_url, local_path)
     else:
         logger.info(f"Downloading {gbif_id} to {local_path}")
         logger.info(f"Image URL: {image_url}")
-        download_image(gbif_id, image_url, local_path)
+        _ = download_image(gbif_id, image_url, local_path)
 
         n_installed += 1
 
         if n_installed % 10000 == 0:
             send_notification("Image Installation", f"Installed {n_installed} images")
-    
+
+    try: 
+        resize_image(gbif_id, local_path)
+    except OSError as e:
+        os.remove(local_path)
+        logger.error(f"Error resizing {gbif_id}: {e}. Redownloading...")
+        process_row(row)
+
 
 if __name__ == "__main__":
     parser = ArgumentParser()
