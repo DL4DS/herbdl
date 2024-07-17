@@ -16,22 +16,26 @@ import pandas as pd
 import pickle
 import os
 import logging
+from torchvision.transforms import Resize, Compose, PILToTensor
+from PIL import Image
+import pickle
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 set_seed(42)
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, filemode='w', filename='evaluation.log')
+logging.basicConfig(level=logging.INFO, filemode='w', filename='evaluation.info')
 
 # Model definition
 MODEL_CPKT = "openai/clip-vit-large-patch14-336"
 PRETRAINED_MODEL = "dl4ds/herbaria_foundation_model"
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_CPKT)
-model = CLIPModel.from_pretrained(PRETRAINED_MODEL)
-processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+tokenizer = AutoTokenizer.from_pretrained(MODEL_CPKT, cache_dir=".")
+processor = CLIPProcessor.from_pretrained(MODEL_CPKT, cache_dir=".")
+model = CLIPModel.from_pretrained(PRETRAINED_MODEL, cache_dir=".")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+num_gpus = torch.cuda.device_count()
 
 # Dataset
 IMAGE_BASE_DIR = "/projectnb/herbdl/data/kaggle-herbaria/herbarium-2022/test_images"
@@ -50,8 +54,8 @@ out_json = "/projectnb/herbdl/workspaces/smritis/finetuning/training/pairs.json"
 dataset = load_dataset("json", data_files=out_json)
 index = 0
 
-unique_captions = list(set(dataset['train']['caption']))
-print(f"Unique captions: {len(unique_captions)}")
+unique_captions = sorted(list(set(dataset['train']['caption'])))
+logger.info(f"Unique captions: {len(unique_captions)}")
 
 TRAIN_METADATA = "/projectnb/herbdl/data/kaggle-herbaria/herbarium-2022/train_metadata.json"
 
@@ -69,117 +73,87 @@ def map_label_to_category(label):
     category = categories_df[(categories_df['species'] == species) & (categories_df['genus'] == genus) & (categories_df['family'] == family)].iloc[0]['category_id']
     return category
 
+def preprocess_image(image_path):
+    image = Image.open(image_path)
+    
+    return processor(images=image, return_tensors="pt",).pixel_values.squeeze()
 
-# Note: The else block takes a long time
-if os.path.exists("preprocessed_images.pkl"):
-    with open("preprocessed_images.pkl", "rb") as f:
-        preprocessed_images = pickle.load(f)
-else:
-    transform = Compose([
-        Resize((336, 336)),
-        PILToTensor(),
-    ])
 
-    def preprocess_image(image_path):
-        image = Image.open(image_path)
-        
-        return transform(image).unsqueeze(0)
-
-    preprocessed_images = [{'pixel_values': preprocess_image(image_path), 
-    "image_path": image_path} for image_path in IMAGE_PATHS]
-
-print("Number of Preprocessed Images:", len(preprocessed_images))
-
-# Tokenizing captions
-tokenized_captions = torch.tensor([tokenizer.encode(caption, padding='max_length') for caption in unique_captions]).cuda()
-attention_mask = torch.ones((len(unique_captions), len(tokenized_captions[0]))).cuda()
-
-print("Tokenized Captions Shape:", tokenized_captions.shape)
-
-class CaptionDataset(Dataset):
-    def __init__(self, captions, tokenizer):
-        self.captions = captions
-        self.tokenizer = tokenizer
+class ImageDataset(Dataset):
+    def __init__(self, images):
+        self.images = images
 
     def __len__(self):
-        return len(self.captions)
+        return len(self.images)
 
     def __getitem__(self, idx):
-        return self.captions[idx]
+        path = self.images[idx]
+        file_name = os.path.basename(path)
+        image_id = int(file_name.split(".")[0].split("-")[1])
+        return {"pixel_values": preprocess_image(path), "image_id": image_id}
 
-num_gpus = torch.cuda.device_count()
-caption_chunks = [tokenized_captions[i::num_gpus] for i in range(num_gpus)]
 
-model = DataParallel(model).eval().cuda()
+image_dataset = ImageDataset(IMAGE_PATHS)
+image_loader = DataLoader(image_dataset, batch_size=8, shuffle=False)
 
-submission_lst = []
+logger.info(f"Number of images: {len(image_dataset)}")
 
-images_n = 0
+caption_embeddings = []
 
-def process_chunk(caption_chunk, device, image):
-    caption_dataset = CaptionDataset(caption_chunk, processor)
-    caption_loader = DataLoader(caption_dataset, batch_size=64, shuffle=False)
-    
-    max_prob = -float('inf')
-    best_caption = None
-
-    for batch in caption_loader:
-        
-        inputs = {
-            "input_ids": batch.to(device),
-            "attention_mask": attention_mask,
-            "pixel_values": image.to(device),
-        }
-        
+if not os.path.exists("./caption_embeddings.pt"):
+    for caption in unique_captions:
+        inputs = processor(text=caption, return_tensors='pt', padding=True).to(device)
         with torch.no_grad():
-            outputs = model.module(**inputs)  # Access the original model in DataParallel
-        
-        logits_per_image = outputs.logits_per_image
-        probs = logits_per_image.softmax(dim=1)
-        
-        batch_max_prob, batch_max_idx = torch.max(probs, dim=1)
-        if batch_max_prob > max_prob:
-            max_prob = batch_max_prob
-            best_caption = caption_chunk[batch_max_idx.item()]
+            caption_embedding = model.get_text_features(**inputs)
+        caption_embeddings.append(caption_embedding.cpu())
 
-    
-    return max_prob, best_caption
+    text_features = torch.stack(caption_embeddings).squeeze(1)
+    torch.save(caption_embeddings, "caption_embeddings.pt")
 
-images_n = 0
+else:
+
+    text_features = torch.load('caption_embeddings.pt').to(device)
+
+logger.info(f"Label embeddings size: {text_features.size()}")
+
+model = model.eval()
+model.to(device)
+
 submission_lst = []
+images_n = 0
 
 if __name__ == '__main__':
-
-    try: 
+    
+    for batch in image_loader:
         
-        for image in preprocessed_images:
-            pixel_values = image['pixel_values'].cuda()
-            image_path = image['image_path']
-            image_id = int(image_path.split(".")[0][-1])
+        pixel_values = batch['pixel_values'].to(device)
+        image_ids = batch['image_id']
+        #logger.info(f"Image ids: {image_ids}")
 
-            inputs = {"input_ids": tokenized_captions, "pixel_values": pixel_values, "attention_mask": attention_mask}
-
+        try: 
             with torch.no_grad():
-                outputs = model(**inputs)
 
-            logits_per_image = outputs.logits_per_image  # this is the image-text similarity score
-            probs = logits_per_image.softmax(dim=1)  # we can take the softmax to get the label probabilities
+                image_features = model.get_image_features(pixel_values=batch['pixel_values'].to(device))
+
+            logits = torch.matmul(image_features, text_features.T)
+
+            predictions = logits.argmax(dim=1)
+
+            predicted_captions = [unique_captions[predictions[i].item()] for i in range(len(predictions))]
+
+            predicted_categories = [map_label_to_category(caption) for caption in predicted_captions]
             
-            predicted_label = unique_captions[probs.argmax(dim=1)]
-            predicted_category = map_label_to_category(predicted_label)
+            #logger.info(f"Predicted categories: {predicted_categories}")
+            #logger.info("-----")
 
-            submission_lst.append({"Id": image_id, "Predicted": predicted_category})
+            submission_lst += [{"image_id": image_ids[i].item(), "category_id": predicted_categories[i]} for i in range(len(image_ids))] 
 
             images_n += 1
-            if images_n % 500 == 0:
+            if images_n % 10000 == 0:
                 logger.info(f"Processed {images_n} images")
+        except KeyboardInterrupt:
+            logger.warning(f"Keyboard interrupt -- processed {images_n} images")
+            break
 
-        submission_df = pd.DataFrame(submission_lst)
-        submission_df.head()
-
-    except KeyboardInterrupt:
-            logger.info(f"Processed {images_n} images")
-            pass
-
-submission_df = pd.DataFrame(submission_lst)
-submission_df.to_csv("submission.csv", index=False)
+    submission_df = pd.DataFrame(submission_lst)
+    submission_df.to_csv("submission.csv", index=False)
