@@ -5,20 +5,13 @@ from transformers import (
     set_seed,
 )
 from transformers import CLIPProcessor, CLIPModel
-from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset
-from torchvision.transforms import Resize, Compose, PILToTensor
 from PIL import Image
 from datasets import load_dataset
-import torch.multiprocessing as mp
 import json
 import pandas as pd
-import pickle
 import os
 import logging
-from torchvision.transforms import Resize, Compose, PILToTensor
-from PIL import Image
-import pickle
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 set_seed(42)
@@ -151,6 +144,7 @@ if __name__ == '__main__':
             images_n += 1
             if images_n % 10000 == 0:
                 logger.info(f"Processed {images_n} images")
+                
         except KeyboardInterrupt:
             logger.warning(f"Keyboard interrupt -- processed {images_n} images")
             break
