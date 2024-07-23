@@ -9,13 +9,14 @@ from transformers import (
     set_seed,
 )
 from transformers import CLIPProcessor, CLIPModel
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from PIL import Image
 from datasets import load_dataset
 import json
 import pandas as pd
 import os
 import logging
+import numpy as np
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 set_seed(42)
@@ -49,10 +50,6 @@ root_csv = "/projectnb/herbdl/data/kaggle-herbaria/train_2022_labeled.csv"
 out_json = "/projectnb/herbdl/workspaces/smritis/finetuning/training/pairs.json"
 
 dataset = load_dataset("json", data_files=out_json)
-index = 0
-
-unique_captions = sorted(list(set(dataset['train']['caption'])))
-logger.info(f"Unique captions: {len(unique_captions)}")
 
 TRAIN_METADATA = "/projectnb/herbdl/data/kaggle-herbaria/herbarium-2022/train_metadata.json"
 
@@ -103,6 +100,23 @@ train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
 
 logger.info(f"Number of images: {len(train_dataset)}")
 
+taxons = np.array([label_to_taxons(i) for i in dataset['train']['caption']])
+
+species = taxons[:, 0]
+genus = taxons[:, 1]
+family = taxons[:, 2]
+
+unique_species = sorted(list(set(species)))
+unique_genus = sorted(list(set(genus)))
+unique_family = sorted(list(set(family)))
+
+logger.info(f"Unique species: {len(unique_species)}")
+logger.info(f"Unique genus: {len(unique_genus)}")
+logger.info(f"Unique family: {len(unique_family)}")
+
+unique_captions = sorted(list(set(dataset['train']['caption'])))
+logger.info(f"Unique captions: {len(unique_captions)}")
+
 caption_embeddings = []
 
 if not os.path.exists("./caption_embeddings.pt"):
@@ -131,6 +145,10 @@ correct_captions = 0
 correct_family = 0
 correct_genus = 0
 correct_species = 0
+
+species_dict = {species: 0 for species in unique_species}
+genus_dict = {genus: 0 for genus in unique_genus}
+family_dict = {family: 0 for family in unique_family}
 
 if __name__ == '__main__':
     
@@ -170,15 +188,31 @@ if __name__ == '__main__':
                 correct_family += sum([predicted_taxons[i][2] == true_taxons[i][2] for i in range(len(true_taxons))])
                 correct_genus += sum([predicted_taxons[i][1] == true_taxons[i][1] for i in range(len(true_taxons))])
                 correct_species += sum([predicted_taxons[i][0] == true_taxons[i][0] for i in range(len(true_taxons))])
-                
+
+                # count correct species, genus, family
+                for i in range(len(categories)):
+                    species_dict[true_taxons[i][0]] += 1 if predicted_taxons[i][0] == true_taxons[i][0] else 0
+                    genus_dict[true_taxons[i][1]] += 1 if predicted_taxons[i][1] == true_taxons[i][1] else 0
+                    family_dict[true_taxons[i][2]] += 1 if predicted_taxons[i][2] == true_taxons[i][2] else 0
+                    
                 images += len(image_ids)
 
-                if images % 10000 == 0:
+                if images % 50000 == 0:
                     logger.info(f"Processed {images} images")
 
             except KeyboardInterrupt:
                 logger.info(f"Keyboard interrupt -- processed {images} images")
                 break
+
+# Write dicts to file
+with open("evaluation_result/species_dict.json", "w") as f:
+    json.dump(species_dict, f)
+
+with open("evaluation_result/genus_dict.json", "w") as f:
+    json.dump(genus_dict, f)
+
+with open("evaluation_result/family_dict.json", "w") as f:
+    json.dump(family_dict, f)
 
 logger.info("===== Evaluation Summary =====")
 logger.info(f"Correct captions: {correct_captions}")
