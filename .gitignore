@@ -1,2 +1,9 @@
 # ignore vsix extension files
 *.vsix
+models--*
+*.pt
+*.csv
+*.log
+*.info
+*.json
+*.sh
