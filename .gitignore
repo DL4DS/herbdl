@@ -5,3 +5,5 @@ models--*
 *.csv
 *.log
 *.info
+*.json
+*.sh
