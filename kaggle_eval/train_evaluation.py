@@ -93,7 +93,11 @@ class ImageDatasetTrain:
         category = map_label_to_category(label)
         file_name = os.path.basename(path)
         image_id = int(file_name.split(".")[0].split("__")[1])
-        return {"pixel_values": preprocess_image(path), "image_id": image_id, "label": label, "category": category}
+        return {"pixel_values": preprocess_image(path), "image_id": image_id, "label": label, "category": category, "path": path}
+
+    def sample(self, n):
+        indices = np.random.choice(len(self), n, replace=False)
+        return [self[i] for i in indices]
 
 train_dataset = ImageDatasetTrain(dataset['train']['image'], dataset['train']['caption'])
 train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
