@@ -7,3 +7,9 @@ models--*
 *.info
 *.json
 *.sh
+*.env
+finetuning/venv
+venv
+*.sh*
+*.bin
+*.pth

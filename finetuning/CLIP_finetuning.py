@@ -197,7 +197,7 @@ class Transform(torch.nn.Module):
     def __init__(self, image_size, mean, std):
         super().__init__()
         self.transforms = torch.nn.Sequential(
-            Resize([image_size], interpolation=InterpolationMode.BICUBIC),
+            Resize([image_size], interpolation=InterpolationMode.BICUBIC, antialias=True),
             CenterCrop(image_size),
             ConvertImageDtype(torch.float),
             Normalize(mean, std),
@@ -428,9 +428,10 @@ def main():
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
 
-        train_dataset = train_dataset.filter(
-            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        )
+        # train_dataset = train_dataset.filter(
+        #     filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
+        # ) -- there's no need to filter, we don't have corrupt images
+
         train_dataset = train_dataset.map(
             function=tokenize_captions,
             batched=True,
@@ -451,9 +452,10 @@ def main():
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-        eval_dataset = eval_dataset.filter(
-            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        )
+        # eval_dataset = eval_dataset.filter(
+        #     filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
+        # ) -- there's no need to filter, we don't have corrupt images
+
         eval_dataset = eval_dataset.map(
             function=tokenize_captions,
             batched=True,
@@ -474,9 +476,10 @@ def main():
             max_eval_samples = min(len(test_dataset), data_args.max_eval_samples)
             test_dataset = test_dataset.select(range(max_eval_samples))
 
-        test_dataset = test_dataset.filter(
-            filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
-        )
+        # test_dataset = test_dataset.filter(
+        #     filter_corrupt_images, batched=True, num_proc=data_args.preprocessing_num_workers
+        # ) 
+
         test_dataset = test_dataset.map(
             function=tokenize_captions,
             batched=True,
@@ -496,6 +499,8 @@ def main():
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
         data_collator=collate_fn,
+        
+        
     )
 
     # 9. Training
