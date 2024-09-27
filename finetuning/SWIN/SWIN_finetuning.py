@@ -34,6 +34,7 @@ from torchvision.transforms import (
     Resize,
     ToTensor,
 )
+from torchvision.io import read_image, ImageReadMode
 
 import transformers
 from transformers import (
@@ -382,18 +383,18 @@ def main():
             normalize,
         ]
     )
-
+    from PIL import Image
     def train_transforms(example_batch):
         """Apply _train_transforms across a batch."""
         example_batch["pixel_values"] = [
-            _train_transforms(pil_img.convert("RGB")) for pil_img in example_batch[data_args.image_column_name]
+            _train_transforms(Image.open(pil_img).convert("RGB")) for pil_img in example_batch[data_args.image_column_name]
         ]
         return example_batch
 
     def val_transforms(example_batch):
         """Apply _val_transforms across a batch."""
         example_batch["pixel_values"] = [
-            _val_transforms(pil_img.convert("RGB")) for pil_img in example_batch[data_args.image_column_name]
+            _val_transforms(Image.open(pil_img).convert("RGB")) for pil_img in example_batch[data_args.image_column_name]
         ]
         return example_batch
 
