@@ -23,8 +23,8 @@ logging.basicConfig(filename=f'{CWD}/image_install.log', level=logging.INFO, fil
 link_logger = logging.getLogger("link_logger")
 link_logger.setLevel(logging.INFO)
 
-INSTALL_PATH = "/projectnb/herbdl/data/harvard-herbaria/images"
-GBIF_MULTIMEDIA_DATA = "/projectnb/herbdl/data/harvard-herbaria/gbif/multimedia.txt"
+INSTALL_PATH = "/projectnb/herbdl/data/GBIF/IMAGES/"
+GBIF_MULTIMEDIA_DATA = "/projectnb/herbdl/data/GBIF/multimedia.txt"
 
 n_installed = len(os.listdir(INSTALL_PATH))
 
@@ -108,8 +108,9 @@ def process_row(row):
     if downloaded:
         n_installed += 1
 
-    if n_installed % 10000 == 0:
-        send_notification("Image Installation", f"Installed {n_installed} images")
+    if n_installed % 50000 == 0:
+        # send_notification("Image Installation", f"Installed {n_installed} images")
+        logger.info(f"Installed {n_installed} images")
 
     try:
         if downloaded:
