@@ -51,6 +51,15 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
+import wandb
+
+os.environ["WANDB_PROJECT"]="Herbaria SWIN"
+
+# save your trained model checkpoint to wandb
+os.environ["WANDB_LOG_MODEL"]="true"
+
+# turn off watch to log faster
+os.environ["WANDB_WATCH"]="false"
 
 """ Fine-tuning a 🤗 Transformers model for image classification"""
 
