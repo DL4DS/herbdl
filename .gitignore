@@ -13,3 +13,4 @@ venv
 *.sh*
 *.bin
 *.pth
+**/wandb
