@@ -53,13 +53,18 @@ from transformers.utils.versions import require_version
 
 import wandb
 
-os.environ["WANDB_PROJECT"]="Herbaria SWIN"
+os.environ["WANDB_PROJECT"]="herbdl"
 
 # save your trained model checkpoint to wandb
 os.environ["WANDB_LOG_MODEL"]="true"
 
 # turn off watch to log faster
 os.environ["WANDB_WATCH"]="false"
+
+wandb.init()
+wandb.run.name = "SWIN_finetuning_31512"
+wandb.run.save()
+
 
 """ Fine-tuning a 🤗 Transformers model for image classification"""
 
