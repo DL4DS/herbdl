@@ -7,3 +7,9 @@ models--*
 *.info
 *.json
 *.sh
+*.pth
+*.bin
+*.wandb
+**/wandb/**
+*.pyc
+*.sh.*
