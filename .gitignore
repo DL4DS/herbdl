@@ -9,7 +9,8 @@ models--*
 *.env
 finetuning/venv
 venv
-*.sh*
+*.e*
+*.o*
 *.bin
 *.pth
 **/wandb
