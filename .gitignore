@@ -6,7 +6,6 @@ models--*
 *.log
 *.info
 *.json
-*.sh
 *.env
 finetuning/venv
 venv

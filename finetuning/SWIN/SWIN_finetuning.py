@@ -62,8 +62,6 @@ os.environ["WANDB_LOG_MODEL"]="true"
 os.environ["WANDB_WATCH"]="false"
 
 wandb.init()
-wandb.run.name = "SWIN_finetuning_31512"
-wandb.run.save()
 
 
 """ Fine-tuning a 🤗 Transformers model for image classification"""
@@ -450,6 +448,11 @@ def main():
             checkpoint = training_args.resume_from_checkpoint
         elif last_checkpoint is not None:
             checkpoint = last_checkpoint
+            
+        checkpoint_number = checkpoint.split("-")[-1] if checkpoint is not None else None
+        wandb.run.name = f"SWIN_finetuning_{checkpoint_number}"
+        wandb.run.save()
+        
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()
         trainer.log_metrics("train", train_result.metrics)
