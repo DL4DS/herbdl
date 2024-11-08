@@ -48,20 +48,36 @@ from transformers import (
     set_seed,
 )
 from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import check_min_version, send_example_telemetry
+from transformers.utils import send_example_telemetry
 from transformers.utils.versions import require_version
 
 import wandb
 
-os.environ["WANDB_PROJECT"]="herbaria"
+os.environ["WANDB_PROJECT"]="herbdl"
 
-# save your trained model checkpoint to wandb
 os.environ["WANDB_LOG_MODEL"]="true"
 
 # turn off watch to log faster
 os.environ["WANDB_WATCH"]="false"
 
-wandb.init()
+learning_rate_type=os.getenv("LR_TYPE", "other")
+frozen = os.getenv("FROZEN", "false").lower() == "true"
+print(f"__CUSTOM__: Learning rate type: {learning_rate_type}")
+
+frozen_type = os.getenv("FROZEN_TYPE", "v1")
+print(f"__CUSTOM__: Frozen type: {frozen_type}")
+
+run_group = os.getenv("RUN_GROUP", "other") # SWIN_frozen, SWIN_linear
+name = os.getenv("RUN_NAME", "other") # SWIN_frozen, SWIN_linear
+run_id = os.getenv("RUN_ID", "other") # (unique id)
+
+wandb.init(
+    entity="bu-spark-ml",
+    project="herbdl",
+    resume="allow",
+    name=name,
+    id=run_id
+)
 
 
 """ Fine-tuning a 🤗 Transformers model for image classification"""
@@ -369,6 +385,18 @@ def main():
         trust_remote_code=model_args.trust_remote_code,
     )
 
+    if frozen:
+        print("__CUSTOM__: Freezing model according to the frozen type: ", frozen_type)
+        for name, param in model.named_parameters():
+            if frozen_type == "v1":
+                if 'classifier' not in name and "swinv2.layernorm" not in name:
+                    param.requires_grad = False
+            else:
+                if 'classifier' not in name and "swinv2.layernorm" not in name and not name.startswith("swinv2.encoder.layers.3"):
+                    param.requires_grad = False
+        wandb.run.name = "SWIN_finetuning_frozen"
+        wandb.run.save()
+
     # Define torchvision transforms to be applied to each image.
     if "shortest_edge" in image_processor.size:
         size = image_processor.size["shortest_edge"]
@@ -449,9 +477,9 @@ def main():
         elif last_checkpoint is not None:
             checkpoint = last_checkpoint
             
-        checkpoint_number = checkpoint.split("-")[-1] if checkpoint is not None else None
-        wandb.run.name = f"SWIN_finetuning_{checkpoint_number}"
-        wandb.run.save()
+        #checkpoint_number = checkpoint.split("-")[-1] if checkpoint is not None else None
+        #wandb.run.name = f"SWIN_finetuning_{checkpoint_number}"
+        #wandb.run.save()
         
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()
