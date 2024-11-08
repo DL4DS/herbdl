@@ -6,7 +6,14 @@ models--*
 *.log
 *.info
 *.json
-*.sh
+*.env
+finetuning/venv
+venv
+*.e*
+*.o*
+*.bin
+*.pth
+**/wandb
 *.pth
 *.bin
 *.wandb
