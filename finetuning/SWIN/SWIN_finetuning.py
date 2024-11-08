@@ -53,7 +53,7 @@ from transformers.utils.versions import require_version
 
 import wandb
 
-os.environ["WANDB_PROJECT"]="herbdl"
+os.environ["WANDB_PROJECT"]="herbaria"
 
 # save your trained model checkpoint to wandb
 os.environ["WANDB_LOG_MODEL"]="true"
