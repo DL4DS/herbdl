@@ -23,7 +23,7 @@ fi
 python CLIP_finetuning.py \
     --output_dir $dir \
     --resume_from_checkpoint $recent_file \
-    --model_name_or_path "openai/clip-vit-large-patch14-336" \
+    --model_name_or_path "microsoft/swinv2-base-patch4-window12-192-22k" \
     --train_file "/projectnb/herbdl/workspaces/smritis/finetuning/training/pairs.json" \
     --image_column image \
     --overwrite_output_dir=True \
