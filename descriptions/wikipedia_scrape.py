@@ -19,8 +19,6 @@ n_found = 0
 for sp in tqdm(labels):
     page = sp.replace(" ", "_")
     URL = f"https://en.wikipedia.org/w/index.php?title={page}&action=raw"
-    print(URL)
-    break
     response = req.get(URL)
     if "Wikimedia Error" not in response.text:
         remove_curly = re.sub(r"{{.*?}}", "", response.text, flags=re.DOTALL)
