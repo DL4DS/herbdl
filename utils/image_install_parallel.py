@@ -17,14 +17,18 @@ from PIL import UnidentifiedImageError
 # get JOB_ID from environment
 CWD = os.getcwd()
 
+import datetime as dt
+
+today = dt.datetime.now().strftime("%Y-%m-%d")
+
 logger = logging.getLogger(__name__)
-logging.basicConfig(filename=f'{CWD}/image_install.log', level=logging.INFO, filemode='w')
+logging.basicConfig(filename=f'{CWD}/image_install_{today}.log', level=logging.INFO, filemode='w')
 
 link_logger = logging.getLogger("link_logger")
 link_logger.setLevel(logging.INFO)
 
-INSTALL_PATH = "/projectnb/herbdl/data/GBIF/IMAGES/"
-GBIF_MULTIMEDIA_DATA = "/projectnb/herbdl/data/GBIF/multimedia.txt"
+INSTALL_PATH = "/projectnb/herbdl/data/harvard-herbaria/gbif/images"
+GBIF_MULTIMEDIA_DATA = "/projectnb/herbdl/data/harvard-herbaria/gbif/multimedia.txt"
 
 n_installed = len(os.listdir(INSTALL_PATH))
 

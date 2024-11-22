@@ -20,6 +20,10 @@ import torch
 import torch.nn as nn
 from torch.nn import DataParallel
 
+import warnings
+
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 # parse arguments 
 import argparse
 
@@ -33,6 +37,7 @@ parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate for tr
 parser.add_argument("--weight_decay", type=float, default=1e-2, help="Weight decay for training")
 parser.add_argument("--output_dir", type=str, default="./checkpoints", help="Output directory to save model checkpoints")
 parser.add_argument("--model_type", type=str, default="base", help="Type of model (base or finetuned)")
+parser.add_argument("--freeze_type", type=str, default="v2", help="Freeze type (v0: freeze all layers, v1: freeze all but the last layer, v2: freeze all but the last classifier head and last transformer layer, v3: freeze all but the last classifier head and last 2 transformer layers)")
 
 args = parser.parse_args()
 
@@ -43,6 +48,7 @@ LR = args.lr
 WEIGHT_DECAY = args.weight_decay
 OUTPUT_DIR = args.output_dir
 MODEL_TYPE = args.model_type
+FROZEN_TYPE = args.freeze_type
 
 ######################
 
@@ -58,7 +64,7 @@ else:
 CLIP_CPKT = "openai/clip-vit-base-patch16"
 
 clip_model = CLIPModel.from_pretrained(CLIP_CPKT, cache_dir="./tmp/clip")
-swin_model = AutoModelForImageClassification.from_pretrained(MODEL_CPKT, cache_dir="./tmp/swin")
+vision_backbone = AutoModelForImageClassification.from_pretrained(MODEL_CPKT, cache_dir="./tmp/swin")
 
 print(f"Loading SWIN model {MODEL_CPKT}")
 print(f"Loading CLIP model {CLIP_CPKT}")
@@ -73,9 +79,21 @@ class SWIN_CLIP(nn.Module):
         self.clip_model = clip_model
 
         for name, param in self.swin_model.named_parameters():
-            if 'classifier' not in name and "swinv2.layernorm" not in name and not name.startswith("swinv2.encoder.layers.3"):
+            if FROZEN_TYPE == 'v5':
+                if 'classifier' not in name and "swinv2.layernorm" not in name and not name.startswith("swinv2.encoder.layers.3") and not name.startswith("swinv2.encoder.layers.2") and not name.startswith("swinv2.encoder.layers.1") and not name.startswith("swinv2.encoder.layers.0"):
                     param.requires_grad = False
-            # layer.requires_grad = False
+            elif FROZEN_TYPE == "v4":
+                if 'classifier' not in name and "swinv2.layernorm" not in name and not name.startswith("swinv2.encoder.layers.3") and not name.startswith("swinv2.encoder.layers.2") and not name.startswith("swinv2.encoder.layers.1"):
+                    param.requires_grad = False
+            elif FROZEN_TYPE == "v3":
+                if 'classifier' not in name and "swinv2.layernorm" not in name and not name.startswith("swinv2.encoder.layers.3") and not name.startswith("swinv2.encoder.layers.2"):
+                    param.requires_grad = False
+            elif FROZEN_TYPE == "v2":
+                if 'classifier' not in name and "swinv2.layernorm" not in name and not name.startswith("swinv2.encoder.layers.3"):
+                    param.requires_grad = False
+            else:
+                if 'classifier' not in name and "swinv2.layernorm" not in name:
+                    param.requires_grad = False
         
         # Add a linear layer to project SWIN embeddings to CLIP's dimension (e.g., 512)
         self.projection1 = nn.Linear(swin_model.config.hidden_size, clip_model.config.projection_dim)
@@ -103,6 +121,8 @@ class SWIN_CLIP(nn.Module):
         # Normalize the vision and text features to compute cosine similarity
         vision_features = vision_features / vision_features.norm(dim=-1, keepdim=True)
         text_outputs = text_outputs / text_outputs.norm(dim=-1, keepdim=True)
+        # print(f"Vision features shape: {vision_features.shape}")
+        # print(f"Text outputs shape: {text_outputs.shape}")
 
         # Compute similarity (cosine similarity is just the dot product after normalization)
         similarity = torch.matmul(vision_features, text_outputs.T)
@@ -113,6 +133,8 @@ class SWIN_CLIP(nn.Module):
         # Multiply similarity scores by logit scale
         logits = logit_scale * similarity
 
+        # print(f"Logits shape: {logits.shape}")
+
         return logits
 
 
@@ -121,7 +143,7 @@ class SWIN_CLIP(nn.Module):
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16", cache_dir="./tmp/clip")
 image_processor = AutoImageProcessor.from_pretrained("microsoft/swin-base-patch4-window12-384", cache_dir="./tmp/swin")
 
-model = SWIN_CLIP(swin_model, clip_model)
+model = SWIN_CLIP(vision_backbone, clip_model)
 learnable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Number of learnable parameters: {learnable_params}")
 
@@ -133,19 +155,19 @@ print(f"Training dataset size: {train_df.shape}, Validation dataset size: {val_d
 np.random.seed(42)
 
 top_labels = train_df['caption'].value_counts().nlargest(NUM_LABELS).index.tolist()
-train_df = train_df[train_df['caption'].isin(top_labels)]
-val_df = val_df[val_df['caption'].isin(top_labels)]
+train_df_sample = train_df[train_df['caption'].isin(top_labels)]
+val_df_sample = val_df[val_df['caption'].isin(top_labels)]
 
 
-image_paths = train_df["image"].tolist()
-labels = train_df["caption"].tolist()
-print(f"Training set size: {train_df.shape}")
-print(f"Validation set size: {val_df.shape}")
+image_paths = train_df_sample["image"].tolist()
+labels = train_df_sample["caption"].tolist()
+print(f"Training set size: {train_df_sample.shape}")
+print(f"Validation set size: {val_df_sample.shape}")
 
-image_processor = AutoImageProcessor.from_pretrained("microsoft/swin-base-patch4-window12-384", cache_dir="/tmp/swin")
+image_processor = AutoImageProcessor.from_pretrained("microsoft/swin-base-patch4-window12-384", cache_dir="./tmp/swin")
 
 train_dataset = ImageDatasetTrain(image_paths, labels, image_processor)
-val_dataset = ImageDatasetTrain(val_df["image"].tolist(), val_df["caption"].tolist(), image_processor)
+val_dataset = ImageDatasetTrain(val_df_sample["image"].tolist(), val_df_sample["caption"].tolist(), image_processor)
 
 train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
@@ -248,7 +270,7 @@ for epoch in tqdm(range(EPOCHS), desc="Epoch"):
         eval_accs += [correct / len(val_dataset) * 100]
 
     # if the last 5 epochs have not shown improvement, increase the learning rate
-    if len(eval_accs) > 5 and np.allclose(eval_accs[-5:], [eval_accs[-1]], atol=0.1):
+    if len(eval_accs) > 5 and np.allclose(eval_accs[-4:], [eval_accs[-1]], atol=0.1):
         for param_group in optimizer.param_groups:
             param_group['lr'] *= 2
         print(f"Learning rate increased to {param_group['lr']}")
@@ -256,7 +278,7 @@ for epoch in tqdm(range(EPOCHS), desc="Epoch"):
             
 # save model
 
-model_name = f"{MODEL_TYPE}_{len(val_labels)}_labels_{EPOCHS}_epochs_v2"
+model_name = f"{MODEL_TYPE}_{len(val_labels)}_labels_{EPOCHS}_epochs_{FROZEN_TYPE}"
 path = f"./checkpoints/{model_name}"
 os.makedirs(f"./checkpoints/{model_name}", exist_ok=True)
 
@@ -311,8 +333,8 @@ all_labels_processed.shape
 ## Zero-shot classification
 np.random.seed(42)
 NUM_ZEROSHOT_LABELS = 50
-zeroshot_sample = np.random.choice(train_df[~train_df['caption'].isin(top_labels)]['caption'].unique(), 50, replace=False)
-zeroshot_sample = train_df[train_df['caption'].isin(zeroshot_sample)]
+zeroshot_labels_sample = np.random.choice(train_df[~train_df['caption'].isin(top_labels)]['caption'].unique(), 50, replace=False)
+zeroshot_sample = train_df[train_df['caption'].isin(zeroshot_labels_sample)]
 
 all_zeroshot_labels = list(zeroshot_sample['caption'].unique())
 all_zeroshot_labels_processed = processor(text=all_zeroshot_labels, return_tensors="pt", padding=True).input_ids.to(device)
@@ -352,5 +374,17 @@ for batch in tqdm(zeroshot_dataloader, desc="Zero-shot validation"):
 
 print(f"Zero-shot top 1 accuracy: {correct / len(zeroshot_dataset) * 100:.2f}%")
 print(f"Zero-shot top 5 accuracy: {top5 / len(zeroshot_dataset) * 100:.2f}%")
+
+# Write the results to a file
+
+results = {
+    "zero_shot_top1": correct / len(zeroshot_dataset) * 100,
+    "zero_shot_top5": top5 / len(zeroshot_dataset) * 100,
+    "num_zero_shot_labels": NUM_ZEROSHOT_LABELS
+}
+
+with open(f"./checkpoints/{model_name}/zero_shot_results.json", "w") as f:
+    json.dump(results, f)
+
 
 
