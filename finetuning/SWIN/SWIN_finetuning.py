@@ -391,11 +391,17 @@ def main():
             if frozen_type == "v1":
                 if 'classifier' not in name and "swinv2.layernorm" not in name:
                     param.requires_grad = False
+            elif frozen_type == "v4":
+                if 'classifier' not in name and "swinv2.layernorm" not in name and not name.startswith("swinv2.encoder.layers.3") and not name.startswith("swinv2.encoder.layers.2") and not name.startswith("swinv2.encoder.layers.1"):
+                    param.requires_grad = False
+            elif frozen_type == "v3":
+                if 'classifier' not in name and "swinv2.layernorm" not in name and not name.startswith("swinv2.encoder.layers.3") and not name.startswith("swinv2.encoder.layers.2"):
+                    param.requires_grad = False
             else:
                 if 'classifier' not in name and "swinv2.layernorm" not in name and not name.startswith("swinv2.encoder.layers.3"):
                     param.requires_grad = False
-        wandb.run.name = "SWIN_finetuning_frozen"
-        wandb.run.save()
+        #wandb.run.name = "SWIN_finetuning_frozen"
+        #wandb.run.save()
 
     # Define torchvision transforms to be applied to each image.
     if "shortest_edge" in image_processor.size:
