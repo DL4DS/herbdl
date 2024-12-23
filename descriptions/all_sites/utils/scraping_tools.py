@@ -221,6 +221,6 @@ class scraping_tools:
 
                 if plant != 'stats' and plant_info['common_names']:
 
-                    sci_and_common_names[plant_info['plant']].extend(plant_info['common_names'])
+                    sci_and_common_names[plant_info.get('plant', ' '.join(plant.split('/')[-1].split('=')[-1].split('_')))].extend(plant_info['common_names'])
 
         return sci_and_common_names

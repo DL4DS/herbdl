@@ -1,6 +1,10 @@
 
 from typing import Literal
 
+from bs4 import BeautifulSoup as BS
+
+import requests as r
+
 class site_tools:
 
     class wikipedia:
@@ -75,7 +79,7 @@ class site_tools:
         @staticmethod
         def search_format(common_names) -> list[str]:
 
-            print(urls := [f'https://britannica.com/plant/{cn.replace(" ", "-")}' for cn in common_names])
+            urls = [f'https://britannica.com/plant/{cn.replace(" ", "-")}' for cn in common_names]
 
             return urls
 
@@ -87,7 +91,29 @@ class site_tools:
         @staticmethod
         def description(soup) -> str: 
             
-            return '/n'.join([p.text for p in phd.parent.find_all('p')]) if (phd := soup.find('h1', string='Physical description')) else ''
+            base_url = 'https://britannica.com'
+
+            article = soup.find('article')
+
+            if article is None:
+
+                return ''
+
+            if (read_more := article.find('a', class_='read-more')):
+
+                link, ref = read_more['href'].split('#')
+
+                l = base_url + link
+
+                wrapper_page = BS(r.get(l).text)
+
+                return wrapper_page.find('span', id=ref).parent.text
+
+            else:
+
+                paragraphs = article.find_all('p', class_='topic-paragraph')
+
+                return '\n'.join(p.text for p in paragraphs)
 
     class epicgardening:
 
