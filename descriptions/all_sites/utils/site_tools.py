@@ -12,18 +12,34 @@ class site_tools:
         @staticmethod
         def description(soup) -> str:
 
-            if not (desc := soup.find('h2', id='Description', string='Description')):
-                return ''
+            # Get and append 'Description', 'Distribution', 'Ecology', 'Botany', 'Appearance' and first paragraph
 
-            iter_ = desc.parent
+            paragraphs = []
 
-            paragraphs: list[str] = []
+            # Get first paragraph
 
-            while (next_p := iter_.find_next_sibling()) and next_p.name == 'p':
+            first_para = soup.find(lambda p: p.name == 'p' and 'mw-empty-elt' not in (p.get('class', [])))
 
-                paragraphs.append(next_p.text)
+            if first_para:
 
-                iter_ = next_p
+                paragraphs.append(first_para.text)
+
+            # Get named paragraphs if available
+
+            find_tags = ['Description', 'Distribution', 'Ecology', 'Botany', 'Appearance']
+
+            for tag in find_tags:
+
+                if not (desc := soup.find('h2', id=tag, string=tag)):
+                    continue
+
+                iter_ = desc.parent
+
+                while (next_p := iter_.find_next_sibling()) and next_p.name == 'p':
+
+                    paragraphs.append(next_p.text)
+
+                    iter_ = next_p
             
             return "\n".join(paragraphs)
 
