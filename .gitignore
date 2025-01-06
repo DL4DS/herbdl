@@ -14,3 +14,9 @@ venv
 *.bin
 *.pth
 **/wandb
+*.pth
+*.bin
+*.wandb
+**/wandb/**
+*.pyc
+*.sh.*
