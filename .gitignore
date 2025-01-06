@@ -20,3 +20,4 @@ venv
 **/wandb/**
 *.pyc
 *.sh.*
+.ipynb_checkpoints
