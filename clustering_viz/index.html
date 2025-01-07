@@ -13,8 +13,10 @@
         <div id="image-container" style="display: flex; flex-direction: column; gap: 20px; align-items: center;">
             <p>Image:</p>
             <img id="image-display-1" src="" alt="Last Clicked Image 1" style="max-width: 300px;">
+            <p id="image-name-1" style="margin-top: 10px;">No Image Selected</p>
             <p>Image 2:</p>
             <img id="image-display-2" src="" alt="Last Clicked Image 2" style="max-width: 300px;">
+            <p id="image-name-2" style="margin-top: 10px;">No Image Selected</p>
         </div>
         <div id="plot-div" style="width: 70%; height: 500px;">
             <!-- Plotly chart will be drawn inside this DIV -->
@@ -41,6 +43,9 @@
                     const clickedImages = JSON.parse(localStorage.getItem('clickedImages')) || [];
                     const clickedPoint = data.points[0];
                     const imagePath = clickedPoint.customdata; // get the image path from customdata
+                    
+                    const clickedNames = JSON.parse(localStorage.getItem('clickedNames')) || []; //
+                    const imgName = clickedPoint.data.legendgroup; // get the name 
 
                     if (imagePath) {
                         // add the new image path to the list
@@ -50,16 +55,32 @@
                         if (clickedImages.length > 2) {
                             clickedImages.pop();
                         }
-
+                        
                         // save the updated list to local storage
                         localStorage.setItem('clickedImages', JSON.stringify(clickedImages));
+                        
 
                         // update the displayed images
                         document.getElementById('image-display-1').src = clickedImages[0] || '';
-                        
                         document.getElementById('image-display-2').src = clickedImages[1] || '';
                     }
+                    
+                    if (imgName){
+                        // add the new species name to the list
+                        clickedNames.unshift(imgName);
 
+                        // keep only the last two entries
+                        if (clickedNames.length > 2){
+                            clickedNames.pop();
+                        }
+                        
+                        // save the updated list to local storage
+                        localStorage.setItem('clickedNames', JSON.stringify(clickedNames));
+                        
+                        // update the displayed names
+                        document.getElementById('image-name-1').textContent = clickedNames[0] || '';
+                        document.getElementById('image-name-2').textContent = clickedNames[1] || '';
+                    }
                 })
             })
             .catch(error => {
