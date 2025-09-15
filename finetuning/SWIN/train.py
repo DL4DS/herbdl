@@ -6,7 +6,6 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn import DataParallel as DP
 from torch.utils.data import DataLoader
 from tqdm import tqdm

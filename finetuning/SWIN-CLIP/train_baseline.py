@@ -27,18 +27,15 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 # parse arguments 
 import argparse
 
-parser = argparse.ArgumentParser(description="Train a SWIN-CLIP model for zero-shot classification")
-parser.add_argument("--swin_checkpoint", type=str, default="faridkarimli/SWIN_finetuned_kaggle22", help="SWIN checkpoint to use")
+parser = argparse.ArgumentParser(description="Train a CLIP model for zero-shot classification")
 parser.add_argument("--clip_checkpoint", type=str, default="openai/clip-vit-base-patch16", help="CLIP checkpoint to use")
-parser.add_argument("--num_labels", type=int, default=22, help="Number of labels to use for training")
-parser.add_argument("--epochs", type=int, default=50, help="Number of epochs to train the model")
+parser.add_argument("--num_labels", type=int, default=1000, help="Number of labels to use for training")
+parser.add_argument("--epochs", type=int, default=40, help="Number of epochs to train the model")
 parser.add_argument("--batch_size", type=int, default=128, help="Batch size for training")
 parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate for training")
 parser.add_argument("--weight_decay", type=float, default=1e-2, help="Weight decay for training")
 parser.add_argument("--output_dir", type=str, default="./checkpoints", help="Output directory to save model checkpoints")
-parser.add_argument("--model_type", type=str, default="base", help="Type of model (base or finetuned)")
-parser.add_argument("--freeze_type", type=str, default="v2", help="Freeze type (v0: freeze all layers, v1: freeze all but the last layer, v2: freeze all but the last classifier head and last transformer layer, v3: freeze all but the last classifier head and last 2 transformer layers)")
-
+ 
 args = parser.parse_args()
 
 NUM_LABELS = args.num_labels
@@ -47,105 +44,16 @@ BATCH_SIZE = args.batch_size
 LR = args.lr
 WEIGHT_DECAY = args.weight_decay
 OUTPUT_DIR = args.output_dir
-MODEL_TYPE = args.model_type
-FROZEN_TYPE = args.freeze_type
 
 ######################
 
-SWIN_FINETUNED = "faridkarimli/SWIN_finetuned_kaggle22"
-SWIN_22K_B = "microsoft/swinv2-base-patch4-window12-192-22k"
-SWIN_22K_L = "microsoft/swin-large-patch4-window12-384-in22k"
-
-if MODEL_TYPE == "base":
-    MODEL_CPKT=SWIN_22K_B
-elif MODEL_TYPE == "large":
-    MODEL_CPKT=SWIN_22K_L
-else:
-    MODEL_CPKT=SWIN_FINETUNED
-
 CLIP_CPKT = "openai/clip-vit-base-patch16"
 
-clip_model = CLIPModel.from_pretrained(CLIP_CPKT, cache_dir="./tmp/clip")
-vision_backbone = AutoModelForImageClassification.from_pretrained(MODEL_CPKT, cache_dir="./tmp/swin")
-
-print(f"Loading SWIN model {MODEL_CPKT}")
 print(f"Loading CLIP model {CLIP_CPKT}")
 
-# swin_model.load_state_dict(torch.load("/projectnb/herbdl/workspaces/faridkar/herbdl/finetuning/output/SWIN/checkpoint-70-epochs/pytorch_model.bin"))
-
-# Add a projection layer if needed to match CLIP's embedding size
-class SWIN_CLIP(nn.Module):
-    def __init__(self, swin_model, clip_model):
-        super(SWIN_CLIP, self).__init__()
-        self.swin_model = swin_model
-        self.clip_model = clip_model
-
-        for name, param in self.swin_model.named_parameters():
-            if FROZEN_TYPE == 'v5':
-                if 'classifier' not in name and "swinv2.layernorm" not in name and not name.startswith("swinv2.encoder.layers.3") and not name.startswith("swinv2.encoder.layers.2") and not name.startswith("swinv2.encoder.layers.1") and not name.startswith("swinv2.encoder.layers.0"):
-                    param.requires_grad = False
-            elif FROZEN_TYPE == "v4":
-                if 'classifier' not in name and "swinv2.layernorm" not in name and not name.startswith("swinv2.encoder.layers.3") and not name.startswith("swinv2.encoder.layers.2") and not name.startswith("swinv2.encoder.layers.1"):
-                    param.requires_grad = False
-            elif FROZEN_TYPE == "v3":
-                if 'classifier' not in name and "swinv2.layernorm" not in name and not name.startswith("swinv2.encoder.layers.3") and not name.startswith("swinv2.encoder.layers.2"):
-                    param.requires_grad = False
-            elif FROZEN_TYPE == "v2":
-                if 'classifier' not in name and "swinv2.layernorm" not in name and not name.startswith("swinv2.encoder.layers.3"):
-                    param.requires_grad = False
-            else:
-                if 'classifier' not in name and "swinv2.layernorm" not in name:
-                    param.requires_grad = False
-        
-        # Add a linear layer to project SWIN embeddings to CLIP's dimension (e.g., 512)
-        self.projection1 = nn.Linear(swin_model.config.hidden_size, clip_model.config.projection_dim)
-        self.projection2 = nn.Linear(clip_model.config.projection_dim, clip_model.config.projection_dim)
-        
-
-    def forward(self, pixel_values, input_ids):
-        # Forward pass through SWIN backbone
-        try:
-            swin_output = self.swin_model(pixel_values)
-            vision_outputs = swin_output.last_hidden_state
-        except AttributeError:
-            swin_output = self.swin_model(pixel_values, output_hidden_states=True)
-            vision_outputs = swin_output.hidden_states[-1]
-        
-        vision_features = self.projection1(vision_outputs[:, 0, :])  # CLS token
-        vision_features = F.relu(vision_features)
-
-        vision_features = self.projection2(vision_features)
-        vision_features = F.relu(vision_features)
-        
-        # Forward pass through CLIP's text encoder
-        text_outputs = self.clip_model.get_text_features(input_ids)
-
-        # Normalize the vision and text features to compute cosine similarity
-        vision_features = vision_features / vision_features.norm(dim=-1, keepdim=True)
-        text_outputs = text_outputs / text_outputs.norm(dim=-1, keepdim=True)
-        # print(f"Vision features shape: {vision_features.shape}")
-        # print(f"Text outputs shape: {text_outputs.shape}")
-
-        # Compute similarity (cosine similarity is just the dot product after normalization)
-        similarity = torch.matmul(vision_features, text_outputs.T)
-
-        # logit_scale is typically initialized as a learnable parameter
-        logit_scale = self.clip_model.logit_scale.exp()  # logit_scale starts around 2.6592 in CLIP
-
-        # Multiply similarity scores by logit scale
-        logits = logit_scale * similarity
-
-        # print(f"Logits shape: {logits.shape}")
-
-        return logits
-
-
-
-
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16", cache_dir="./tmp/clip")
-image_processor = AutoImageProcessor.from_pretrained("microsoft/swin-base-patch4-window12-384", cache_dir="./tmp/swin")
 
-model = SWIN_CLIP(vision_backbone, clip_model)
+model = CLIPModel.from_pretrained(CLIP_CPKT, cache_dir="./tmp/clip") #, attn_implementation="flash_attention_2")
 learnable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Number of learnable parameters: {learnable_params}")
 
@@ -163,13 +71,15 @@ val_df_sample = val_df[val_df['caption'].isin(top_labels)]
 
 image_paths = train_df_sample["image"].tolist()
 labels = train_df_sample["caption"].tolist()
+
+val_image_paths = val_df_sample["image"].tolist()
+val_labels = val_df_sample["caption"].tolist()
+
 print(f"Training set size: {train_df_sample.shape}")
 print(f"Validation set size: {val_df_sample.shape}")
 
-image_processor = AutoImageProcessor.from_pretrained("microsoft/swin-base-patch4-window12-384", cache_dir="./tmp/swin")
-
-train_dataset = ImageDatasetTrain(image_paths, labels, image_processor)
-val_dataset = ImageDatasetTrain(val_df_sample["image"].tolist(), val_df_sample["caption"].tolist(), image_processor)
+train_dataset = ImageDatasetTrain(image_paths, labels, processor)
+val_dataset = ImageDatasetTrain(val_image_paths, val_labels, processor)
 
 train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
@@ -201,9 +111,10 @@ def validate(model, val_dataloader, device, verbose=False):
         pixel_values = batch['pixel_values'].to(device)
 
         with torch.no_grad():
-            logits = model(pixel_values, val_labels_processed)
+            output = model(val_labels_processed, pixel_values)
+            logits_img = output.logits_per_image
 
-        predicted_label_idx = logits.argmax().item()
+        predicted_label_idx = logits_img.argmax().item()
 
         predicted_label = val_labels[predicted_label_idx]
         correct_label_idx = val_labels.index(correct_label)
@@ -213,10 +124,10 @@ def validate(model, val_dataloader, device, verbose=False):
                 print(f"Correct: {correct_label}, Predicted: {predicted_label}. Number of correct predictions: {correct}/{len(val_dataset)}")
             correct += 1
         
-        elif correct_label_idx in logits.topk(5).indices:
+        elif correct_label_idx in logits_img.topk(5).indices:
             top5 += 1
 
-        elif correct_label_idx in logits.topk(10).indices:
+        elif correct_label_idx in logits_img.topk(10).indices:
             top10 += 1
         
 
@@ -237,6 +148,9 @@ lr_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.5, to
 losses = []
 eval_accs = []
 
+print('##########################')
+print("Starting training...")
+
 for epoch in tqdm(range(EPOCHS), desc="Epoch"):
     total_loss = 0
     for batch in train_dataloader:
@@ -246,9 +160,15 @@ for epoch in tqdm(range(EPOCHS), desc="Epoch"):
         pixel_values = batch['pixel_values'].to(device)
         input_ids = processor(text=labels, return_tensors="pt", padding=True).input_ids.to(device)
 
-        output = model(pixel_values, input_ids)
+        output = model(input_ids, pixel_values)
+        logits_img = output.logits_per_image
+        logits_text = output.logits_per_image
+        # print(f"Logits shape: {logits_img.shape}, {logits_text.shape}")
+        # print(f"Labels shape: {len(labels)}")
+        
+        # print((logits_img == logits_text).all())
 
-        loss = contrastive_loss(output, labels)
+        loss = contrastive_loss(logits_img, labels)
         loss.backward()    
 
         total_loss += loss.item()
@@ -271,8 +191,6 @@ for epoch in tqdm(range(EPOCHS), desc="Epoch"):
 
         eval_accs += [correct / len(val_dataset) * 100]
 
-        print(f"Last 5 eval accs: {eval_accs[-5:]}")
-
     # if the last 5 epochs have not shown improvement, increase the learning rate
     if len(eval_accs) > 5 and np.allclose(eval_accs[-4:], [eval_accs[-1]], atol=0.1):
         for param_group in optimizer.param_groups:
@@ -282,7 +200,7 @@ for epoch in tqdm(range(EPOCHS), desc="Epoch"):
             
 # save model
 
-model_name = f"{MODEL_TYPE}_{len(val_labels)}_labels_{EPOCHS}_epochs_{FROZEN_TYPE}"
+model_name = f"baseline_{len(val_labels)}_labels_{EPOCHS}_epochs"
 path = f"./checkpoints/{model_name}"
 os.makedirs(f"./checkpoints/{model_name}", exist_ok=True)
 
@@ -307,11 +225,9 @@ plt.title("Validation Accuracy")
 plt.xlabel("Epoch")
 plt.ylabel("Accuracy")
 plt.plot(eval_accs, marker="o")
-plt.show()
-
+plt.savefig(f"./checkpoints/{model_name}/plot.png")
 
 train_labels = set()
-
 
 for batch in train_dataloader:
     labels = batch['label']
@@ -336,18 +252,21 @@ all_labels_processed.shape
 
 ## Zero-shot classification
 np.random.seed(42)
-NUM_ZEROSHOT_LABELS = 1000
-zeroshot_labels_sample = np.random.choice(train_df[~train_df['caption'].isin(top_labels)]['caption'].unique(), 1000, replace=False)
+NUM_ZEROSHOT_LABELS = 50
+zeroshot_labels_sample = np.random.choice(train_df[~train_df['caption'].isin(top_labels)]['caption'].unique(), NUM_ZEROSHOT_LABELS, replace=False)
 zeroshot_sample = train_df[train_df['caption'].isin(zeroshot_labels_sample)]
 
 all_zeroshot_labels = list(zeroshot_sample['caption'].unique())
 all_zeroshot_labels_processed = processor(text=all_zeroshot_labels, return_tensors="pt", padding=True).input_ids.to(device)
 
-zeroshot_dataset = ImageDatasetTrain(zeroshot_sample["image"].tolist(), zeroshot_sample["caption"].tolist(), image_processor)
-print(f"Number of zeroshot labels: {NUM_ZEROSHOT_LABELS}")
-print(f"Length of zeroshot dataset: {len(zeroshot_dataset)}")
+zerosho_image_paths = zeroshot_sample["image"].tolist()
+zeroshot_labels = zeroshot_sample["caption"].tolist()
+
+zeroshot_dataset = ImageDatasetTrain(zerosho_image_paths, zeroshot_labels, processor)
 zeroshot_dataloader = DataLoader(zeroshot_dataset, batch_size=1, shuffle=False)
 
+print(f"Number of zeroshot labels: {NUM_ZEROSHOT_LABELS}")
+print(f"Length of zeroshot dataset: {len(zeroshot_dataset)}")
 
 model.to(device)
 model.eval()
@@ -360,7 +279,7 @@ for batch in tqdm(zeroshot_dataloader, desc="Zero-shot validation"):
     pixel_values = batch['pixel_values'].to(device)
 
     with torch.no_grad():
-        logits = model(pixel_values, all_zeroshot_labels_processed)
+        logits = model(all_zeroshot_labels_processed, pixel_values).logits_per_image
 
     predicted_label_idx = logits.argmax().item()
 

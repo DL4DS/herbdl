@@ -9,9 +9,18 @@ import os
 
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+"""
+This is a script for generating multi-turn conversations about the visual characteristics of herbarium specimens. 
+The script uses GPT-4 to generate conversations between a user and an AI assistant. 
+The conversations are based on the visual characteristics of the specimens, as described in the provided descriptions.
+"""
 
-species_found = json.load(open("species_found.json"))
+client = OpenAI()
+
+species_found = json.load(open("species_captions_descriptions.json"))
+
+# Duplicate each species entry to generate multiple conversations for each species
+species_found = species_found * 5
 
 system_prompt = """
 You are an AI assistant to a herbarium scientist. 
@@ -29,7 +38,7 @@ the text information.
 - Do not use phrases like "mentioned", "caption", "context" in the conversation. Instead,
 refer to the information as being "in the image."
 - Ensure that questions are diverse and cover a range of visual aspects of the image.
-- Ensure that the questions are not too easy for a herbarium scientist to answer - they should be modeled after the questions asked by herbarium scientists.
+- Ensure that the questions are complex, going beyond just a visual summary - they should be rigorous and require careful understanding of the image.
 - The conversation should include at least 2-3 turns of questions and answers about the
 visual aspects of the image.
 - Answer responsibly, avoiding overconfidence, and do not provide botanical advice or
@@ -39,23 +48,23 @@ Generate the conversation in a JSON-like format, with the following structure:
 
 {
 "from": "human",
-"text": "..."
+"value": "..."
 },
 {
 "from": "assistant",
-"text": "..."
+"value": "..."
 }
 """
 
 dataset = []
 
-for sp in list(species_found.keys()):
+for sp in tqdm(species_found, desc="Generating conversations"):
     d = {}
     conversations = []
 
     user_prompt = f"""
-    Species: {sp}
-    Descriptions: {species_found[sp]}
+    Species: {sp['species']}
+    Descriptions: {sp['description']}
     """
 
     messages = [
@@ -66,7 +75,7 @@ for sp in list(species_found.keys()):
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
-        temperature=0.6
+        temperature=0.8
     )
 
     content = response.choices[0].message.content.replace(
@@ -77,9 +86,10 @@ for sp in list(species_found.keys()):
     turns = json.loads(content)
 
     d["id"] = str(uuid.uuid4())
-    d["species"] = sp
+    d["species"] = sp["species"]
+    d['caption'] = sp['caption']
     d["conversations"] = turns
 
     dataset.append(d)
 
-json.dump(dataset, open("descriptions-dataset.json", "w"))
+json.dump(dataset, open("./descriptions-dataset.json", "w"))

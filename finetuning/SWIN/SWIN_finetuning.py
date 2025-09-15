@@ -348,13 +348,26 @@ def main():
         id2label[str(i)] = label
 
     # Load the accuracy metric from the datasets package
-    metric = evaluate.load("accuracy", cache_dir=model_args.cache_dir)
+    accuracy_metric = evaluate.load("accuracy", cache_dir=model_args.cache_dir)
+
+    # Load f1 score metric from datasets package
+    f1_metric = evaluate.load("f1", cache_dir=model_args.cache_dir)
 
     # Define our compute_metrics function. It takes an `EvalPrediction` object (a namedtuple with a
     # predictions and label_ids field) and has to return a dictionary string to float.
     def compute_metrics(p):
         """Computes accuracy on a batch of predictions"""
-        return metric.compute(predictions=np.argmax(p.predictions, axis=1), references=p.label_ids)
+        predictions = np.argmax(p.predictions, axis=1)
+        # Compute the accuracy
+        accuracy = accuracy_metric.compute(predictions=predictions, references=p.label_ids)["accuracy"]
+        # Compute the F1 score
+        f1_score = f1_metric.compute(predictions=predictions, references=p.label_ids, average="weighted")["f1"]
+        
+        # Return both metrics in a dictionary
+        return {
+            "accuracy": accuracy,
+            "f1": f1_score
+        }
 
     config = AutoConfig.from_pretrained(
         model_args.config_name or model_args.model_name_or_path,
