@@ -81,7 +81,7 @@ class HerbariaClassificationDataset(Dataset):
         statistics += f"Image shape: {self.preprocess_image(self.image_dir + self.images[0]).shape}\n"
 
         return statistics
-
+        
 if __name__ == "__main__":
     from constants import KAGGLE_HERBARIUM_21_TRAIN_CSV, KAGGLE_HERBARIUM_21_TRAIN
 
