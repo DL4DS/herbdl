@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 from transformers import AutoImageProcessor
 
 
-class HerbariaDataset(Dataset):
+class HerbariaClassificationDataset(Dataset):
     def __init__(self, annotations_file: str, image_dir: str, name: str, label: str, transform=None, image_processor=None):
         """
         Args:
@@ -88,7 +88,7 @@ if __name__ == "__main__":
     MODEL_CPKT = "microsoft/swinv2-large-patch4-window12-192-22k"
     image_processor = AutoImageProcessor.from_pretrained(MODEL_CPKT)
 
-    dataset = HerbariaDataset(KAGGLE_HERBARIUM_21_TRAIN_CSV, KAGGLE_HERBARIUM_21_TRAIN, name="Kaggle Herbaria 21 Train", label="scientificNameEncoded", image_processor=image_processor)
+    dataset = HerbariaClassificationDataset(KAGGLE_HERBARIUM_21_TRAIN_CSV, KAGGLE_HERBARIUM_21_TRAIN, name="Kaggle Herbaria 21 Train", label="scientificNameEncoded", image_processor=image_processor)
 
     print(dataset)
 
