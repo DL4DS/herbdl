@@ -1,12 +1,7 @@
 
 # Utilities for large-scale management of our image datasets
 
-1. Loaders for: 
-
-- [ ] GBIF
-- [ ] Kaggle 2022
-- [ ] Kaggle 2021
-
-2. Code for merging and creating new datasets. 
-3. Viewing dataset statistics. 
-4. Display of samples. 
+- [ ] HerbariaDataset: a unified class for quickly loading our image datasets from a pre-annotated CSV file. 
+- [ ] Code for merging and creating new datasets. 
+- [ ] Viewing dataset statistics. 
+- [ ] Display of samples. 
