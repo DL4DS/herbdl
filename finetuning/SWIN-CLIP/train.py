@@ -54,10 +54,12 @@ FROZEN_TYPE = args.freeze_type
 
 SWIN_FINETUNED = "faridkarimli/SWIN_finetuned_kaggle22"
 SWIN_22K_B = "microsoft/swinv2-base-patch4-window12-192-22k"
-SWIN_22K_L = "microsoft/swinv2-large-patch4-window12to24-192to384-22kto1k-ft"
+SWIN_22K_L = "microsoft/swin-large-patch4-window12-384-in22k"
 
 if MODEL_TYPE == "base":
     MODEL_CPKT=SWIN_22K_B
+elif MODEL_TYPE == "large":
+    MODEL_CPKT=SWIN_22K_L
 else:
     MODEL_CPKT=SWIN_FINETUNED
 
@@ -269,6 +271,8 @@ for epoch in tqdm(range(EPOCHS), desc="Epoch"):
 
         eval_accs += [correct / len(val_dataset) * 100]
 
+        print(f"Last 5 eval accs: {eval_accs[-5:]}")
+
     # if the last 5 epochs have not shown improvement, increase the learning rate
     if len(eval_accs) > 5 and np.allclose(eval_accs[-4:], [eval_accs[-1]], atol=0.1):
         for param_group in optimizer.param_groups:
@@ -332,8 +336,8 @@ all_labels_processed.shape
 
 ## Zero-shot classification
 np.random.seed(42)
-NUM_ZEROSHOT_LABELS = 50
-zeroshot_labels_sample = np.random.choice(train_df[~train_df['caption'].isin(top_labels)]['caption'].unique(), 50, replace=False)
+NUM_ZEROSHOT_LABELS = 1000
+zeroshot_labels_sample = np.random.choice(train_df[~train_df['caption'].isin(top_labels)]['caption'].unique(), 1000, replace=False)
 zeroshot_sample = train_df[train_df['caption'].isin(zeroshot_labels_sample)]
 
 all_zeroshot_labels = list(zeroshot_sample['caption'].unique())
